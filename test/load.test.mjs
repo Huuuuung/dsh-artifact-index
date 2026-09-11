@@ -117,7 +117,6 @@ test('apply registers exactly one prefix route and returns a disposer', async ()
   let disposed = false
 
   const ctx = {
-    config: {},
     logger: { info() {}, warn() {}, error() {} },
     effect(callback, label) {
       effectLabels.push(label)
@@ -151,6 +150,22 @@ test('apply registers exactly one prefix route and returns a disposer', async ()
   assert.equal(disposed, false)
 })
 
+test('apply does not read an undeclared config service from the context', async () => {
+  const { apply } = await import('../lib/index.js')
+  const context = new Proxy({
+    logger: { info() {}, warn() {}, error() {} },
+    effect: (callback) => callback(),
+    webServer: { register: () => () => {} },
+  }, {
+    get(target, property, receiver) {
+      if (property === 'config') throw new Error('cannot get property "config" without inject')
+      return Reflect.get(target, property, receiver)
+    },
+  })
+
+  assert.doesNotThrow(() => apply(context, { root: '/tmp/whatever' }))
+})
+
 test('the route apply registers actually serves the index contract', async () => {
   const { apply } = await import('../lib/index.js')
   const { createServer } = await import('node:http')
@@ -164,7 +179,6 @@ test('the route apply registers actually serves the index contract', async () =>
 
     let registered
     const ctx = {
-      config: {},
       logger: { info() {}, warn() {}, error() {} },
       effect: (callback) => callback(),
       webServer: {

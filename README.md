@@ -2,7 +2,7 @@
 
 给 DSH 的 `dsh-artifacts` 侧边栏标签页**提供一个真正可用的 artifact 索引端点**。
 
-零依赖、只读、约 600 行（含注释与测试）。
+零依赖、只读、约 600 行（含注释与测试）。无遥测，无网络外联，无 install 脚本。
 
 ---
 
@@ -28,28 +28,35 @@ artifact 的字节流发给它塞进 iframe。
 
 ## 安装
 
-```bash
-# 本地开发（符号链接，改代码后重启 DSH Desktop 生效）
-dsh plugin --profile desktop add link:D:\opencode-workspace\Projects\DeepseekHarness\dsh-artifact-index
+需要 **DSH ≥ 0.1.5-rc.1**，且 `dsh-better-sidebar` 与 `dsh-artifacts` 已先安装
+（本插件只补后端，不替代它们）。在本仓库根目录执行：
 
-# 或按版本冻结一份副本
-dsh plugin --profile desktop add file:D:\opencode-workspace\Projects\DeepseekHarness\dsh-artifact-index
+```bash
+# 符号链接（开发用：改代码后重启 DSH Desktop 即可生效）
+dsh plugin --profile desktop add "link:<本仓库的绝对路径>"
+
+# 或冻结一份副本
+dsh plugin --profile desktop add "file:<本仓库的绝对路径>"
+
+# 发布到 npm 之后也可以直接按名字装
+dsh plugin --profile desktop add dsh-artifact-index
 ```
 
 重启 DSH Desktop，然后确认挂载行存在：
 
 ```bash
-dsh --profile desktop --dump-config | Select-String artifact-index
+dsh --profile desktop --dump-config | grep artifact-index
 ```
 
 **必须新开一个会话**才能看到效果——DSH 的插件/工具列表是会话创建时的快照。
 
 ### 怎么确认它真的生效了
 
-最便宜的信号是启动日志里的一行（`%APPDATA%\DSH Desktop\logs\dsh-<日期>.log`）：
+最便宜的信号是启动日志里的一行（日志位于 DSH Desktop 的 logs 目录，
+Windows 下是 `%APPDATA%\DSH Desktop\logs\dsh-<日期>.log`）：
 
 ```
-[dsh-artifact-index] artifact root = D:\DSHData\artifacts (maxItems=500, ...)
+[dsh-artifact-index] artifact root = <你的 artifact 目录> (maxItems=500, ...)
 ```
 
 - **有这行** → `apply` 跑到了，剩下的是浏览器侧的事（看侧栏 Artifacts tab）。
@@ -58,15 +65,14 @@ dsh --profile desktop --dump-config | Select-String artifact-index
 
 用 curl 是**测不出来**的：DSH 的 web server 在到达任何插件路由之前，就把非浏览器
 请求 403 掉了（连确实存在的 `/sidebar/api` 和裸 `/` 也一样，补 `Origin` /
-`Sec-Fetch-Site` 都没用）。要命令行验证，用：
+`Sec-Fetch-Site` / `Referer` 都没用）。要命令行验证，用：
 
 ```bash
-node scripts/smoke.mjs D:\DSHData\artifacts
+node scripts/smoke.mjs <你的 artifact 目录>
 ```
 
 它直接驱动 handler、绕过 web server 那道闸门，对**真实**目录逐项回取校验。
-
-> `dsh-artifacts` 与 `dsh-better-sidebar` 需要**先**安装好；本插件只补后端，不替代它们。
+（该脚本只监听 loopback 并把请求发回自己，不向任何外部地址发送数据。）
 
 ---
 
@@ -79,7 +85,7 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 - id: dsh-artifact-index
   name: 'dsh-artifact-index'
   config:
-    root: D:\DSHData\artifacts
+    root: <你的 artifact 目录>
     maxItems: 500
     maxFileBytes: 26214400
     csp: sandbox
@@ -92,6 +98,9 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 | `maxFileBytes` | `26214400`（25 MB） | 单文件上限，超过返回 `413`。 |
 | `csp` | `sandbox` | 给 HTML/SVG/XML 响应加的 `Content-Security-Policy`。见下。 |
 | `trustedHosts` | `[]` | 额外允许的 Host。仅当 DSH 不跑在 loopback 上时才需要。 |
+
+`$DSH_HOME` 指 DSH 的数据目录（Windows 下可用 `echo $env:DSH_HOME` 查看，
+或从 `dsh --profile desktop --dump-config` 里找）。
 
 环境变量：`DSH_ARTIFACT_INDEX_ROOT` 覆盖 `root`（当 config 未提供时）。
 
@@ -125,7 +134,7 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 - `url` 被上游**原样**当作 iframe 的 `src`，因此是根相对且已百分号编码的。
 - `mtime` 单位是**秒**。
 - **响应里没有 `mine` 字段**，这是故意的：上游在 `mine` 缺席时会隐藏
-  「This chat / All」切换器，而 v0.1 还做不了按会话归属。
+  「This chat / All」切换器，而 v0.1 还做不了按会话归属。详见下方「关于 `mine`」。
 - 读不到目录时不抛错，而是回 `200` + `{ count: 0, items: [], error: "…" }`，
   由客户端把 `error` 内联显示出来。
 
@@ -136,9 +145,29 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 
 ---
 
+## 关于 `mine`
+
+`mine` 是 **`dsh-artifacts` 客户端约定的一个可选字段**，不是本插件发明的。
+
+它的语义是「**这个 artifact 是不是当前这次对话产出的**」。客户端据此渲染一个
+**This chat / All** 切换器，让用户在一堆历史产物里只看本轮的结果。
+
+- 字段**存在**时，客户端显示该切换器。
+- 字段**缺席**时，客户端把切换器整个隐藏起来。
+
+本插件 v0.1 **故意不下发 `mine`**，因为算不对它比不算更糟：要做对，必须从会话记录里
+把本轮的 artifact 路径**还原**出来，而会话记录里并没有现成的「产物清单」。可行的做法是
+解析 **tool-call 的参数**（比如写文件工具的 `path` 参数），而不是拿正则去扫原始文本——
+后者只要对话里提到一个文件名就会误判。
+
+所以 v0.1 的选择是：**给一份诚实的、扁平的「全部产物」列表**，而不是一份会撒谎的归属
+信息。`?session=<id>` 参数会被解析但忽略，留给 v0.2 使用。
+
+---
+
 ## 安全
 
-这是**本机文件读取**接口，所以按不可信输入对待。详见 [`docs/SECURITY.md`](docs/SECURITY.md)。
+这是**本机文件读取**接口，所以按不可信输入对待。详见 [`SECURITY.md`](SECURITY.md)。
 
 **做的**：
 
@@ -157,7 +186,7 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 - **没有认证**。能访问这个端口的人就能读 `root` 里的白名单文件。防线是 profile 的
   `networkExposure: loopback`，**不要**把 DSH 暴露到公网。
 - **不写入、不删除**，也不提供任何上传/发布通道。
-- **不做按会话归属**（`mine`），所以别指望「只看这次对话的产物」。
+- **不做按会话归属**（`mine`）。
 - 不跟随符号链接，即使它指向 `root` 内部。
 
 ---
@@ -165,7 +194,7 @@ node scripts/smoke.mjs D:\DSHData\artifacts
 ## 开发
 
 ```bash
-node --test          # 61 个测试：契约、路径穿越、信任判断、打包一致性
+node --test          # 63 个测试：契约、路径穿越、信任判断、装配一致性
 ```
 
 测试里最有价值的两组：
@@ -185,9 +214,15 @@ lib/safe-path.js  路径安全（双重校验）
 lib/trust.js      请求信任判断（Host / Sec-Fetch-Site / Origin）
 ```
 
-`package.json` 里的 **零依赖、零生命周期脚本** 是硬约束，不是巧合：这个 profile
-被 pnpm 的 build-script 策略搞挂过两次（`node-pty`、一个 git 依赖），所以任何需要
-`allowBuilds` 入口的东西都不要加进来。
+外部依赖清单：**没有**。`package.json` 里的零依赖、零 lifecycle 脚本是硬约束，
+不是巧合——插件宿主 profile 被 pnpm 的 build-script 策略搞挂过两次
+（`node-pty`、一个 git 依赖），所以任何需要 `allowBuilds` 入口的东西都不加进来。
+
+如果你要审计「这个仓库会不会偷偷干什么」，只需要看三处：
+
+1. `lib/index.js` 的 `import` —— 全是 `node:` 内置模块。
+2. `scripts/smoke.mjs` —— 只监听 loopback、只请求自己的端口，不向外部发数据。
+3. `package.json` 的 `scripts` —— 没有 `preinstall` / `install` / `postinstall`。
 
 ---
 
@@ -197,6 +232,7 @@ lib/trust.js      请求信任判断（Host / Sec-Fetch-Site / Origin）
 
 需要从会话事件流里把本轮的 artifact 路径还原出来。注意：**不能用正则扫原始文本**，
 必须解析 tool-call 的**参数**（`write` 的 `path`），否则会话内容里提到一个文件名就会误判。
+契约上表现为 `mine: true/false`，侧栏随之出现 `This chat / All` 开关。
 
 **v0.2 — 分页与搜索**
 
@@ -205,6 +241,14 @@ lib/trust.js      请求信任判断（Host / Sec-Fetch-Site / Origin）
 **v0.3 — 缩略图**
 
 图片现在走原图。大量截图时侧边栏会明显变慢。
+
+---
+
+## 设计文档
+
+[`docs/DESIGN.md`](docs/DESIGN.md) 记录了完整的设计推理与取舍（为什么用单条 `prefix`
+路由而不是 `exact` + `prefix`、为什么不用 `ctx.webRuntime`、风险登记表等），
+以及实现过程中被测试抓出来的两个真实缺陷。
 
 ---
 

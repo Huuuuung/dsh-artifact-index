@@ -175,7 +175,7 @@ The startup line is the cheapest proof that `apply` ran. Look for it in
 `%APPDATA%\DSH Desktop\logs\dsh-<date>.log`:
 
 ```
-[dsh-artifact-index] artifact root = D:\DSHData\artifacts (maxItems=500, …)
+[dsh-artifact-index] artifact root = <artifact root> (maxItems=500, …)
 ```
 
 - **Present** → `apply` ran; any remaining problem is client-side.

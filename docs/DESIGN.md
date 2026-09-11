@@ -28,7 +28,7 @@
 | 项 | 值 |
 |---|---|
 | DSH 版本 | `0.1.5-rc.1`（DSH Desktop 2.0.9） |
-| `$DSH_HOME` | `D:\DSHData` |
+| `$DSH_HOME` | DSH 数据目录（Windows 下可用 `echo $env:DSH_HOME` 查看） |
 | profile | `desktop` |
 | `dsh-artifacts` | `github:lucagiftzek/dsh-artifacts` v1.0.0，已装、侧栏 tab 已注册 |
 | 依赖 | `dsh-better-sidebar` v0.19.0（tab 注册的宿主） |
@@ -121,7 +121,7 @@ GET <indexUrl>          # 默认 /report/?list=1
 │    │                   其余 /report/<name> → 文件字节                 │
 │    └─ 纯函数模块（可单测）：scan.js / safe-path.js / trust.js          │
 │                                                                        │
-│  @deepseek-ai/dsh-web-app  ── HTTP :43120 (loopback) ──┐               │
+│  @deepseek-ai/dsh-web-app  ── HTTP :<port> (loopback) ──┐              │
 └───────────────────────────────────────────────────────┼────────────────┘
                                                         │ 同源
 ┌──────────────────────── Browser ───────────────────────┼───────────────┐
@@ -195,7 +195,7 @@ GET <indexUrl>          # 默认 /report/?list=1
 # 用户可在 profile 的 cordis.patch.yml 覆盖（顶层裸 id = 覆盖已有条目）
 - id: dsh-artifact-index
   config:
-    root: D:/opencode-workspace/artifacts
+    root: <你的 artifact 目录>    # 例如 $DSH_HOME/artifacts
     maxItems: 500
     csp: sandbox
 ```
@@ -305,9 +305,10 @@ dsh-artifact-index/
 ├─ scripts/
 │  └─ smoke.mjs          # ✅ 对真实 root 的端到端冒烟（可作安装门禁）
 ├─ docs/
-│  ├─ DESIGN.md          # ✅ 本文档
-│  └─ SECURITY.md        # ✅ 威胁模型与 CSP 策略说明
-├─ README.md             # ✅ 安装/配置/契约/安全/开发
+│  └─ DESIGN.md          # ✅ 本文档
+├─ README.md             # ✅ 中文说明（给人 / 给 AI 的入口）
+├─ README.en.md          # ✅ English README
+├─ SECURITY.md           # ✅ 威胁模型与 CSP 策略（GitHub 只识别根目录这一份）
 ├─ CHANGELOG.md          # ✅
 └─ LICENSE               # ✅ MIT
 ```
@@ -320,11 +321,11 @@ DNS-rebinding 的闸门在设计里缺失，补上并单测（见 §4.3）。
 
 ```powershell
 # 本地开发：link: 建符号链接，改代码后重启 DSH Desktop 即可生效
-dsh plugin --profile desktop add 'link:D:\opencode-workspace\Projects\DeepseekHarness\dsh-artifact-index'
+dsh plugin --profile desktop add "link:<本仓库的绝对路径>"
 # 或冻结一份副本
-dsh plugin --profile desktop add 'file:D:\opencode-workspace\Projects\DeepseekHarness\dsh-artifact-index'
-# 或走 GitHub（发布后）
-dsh plugin --profile desktop add github:<owner>/dsh-artifact-index
+dsh plugin --profile desktop add "file:<本仓库的绝对路径>"
+# 或发布到 npm 后
+dsh plugin --profile desktop add dsh-artifact-index
 ```
 
 `dsh plugin` 是 pnpm 的透传 wrapper（`dsh plugin --help` 直接落出 pnpm 的 help），
@@ -349,18 +350,18 @@ dsh plugin --profile desktop add github:<owner>/dsh-artifact-index
 - [x] `GET /report/?list=1` 返回 §3.1 契约 JSON，`items` 最新在前
 - [x] 负向全过：越界 → 400/404、非白名单 → 404、超限 → 413、跨站/非 loopback Host → 403
 - [x] HTML 预览默认**不执行脚本**（响应带 `Content-Security-Policy: sandbox`）
-- [x] `scripts/smoke.mjs` 对**真实** `D:\DSHData\artifacts` 端到端 **22/22 通过**
+- [x] `scripts/smoke.mjs` 对**真实** artifact 目录（`$DSH_HOME/artifacts`）端到端 **22/22 通过**
 - [x] `dsh --profile desktop --dump-config` 出现 `# == dsh-artifact-index` 挂载行，
       且除既有的 `wallpaper-engine` 警告外**无其他插件回归**
 - [x] `apply` 装配测试：注册恰好一条 `prefix` 路由、回调返回 disposer
 
-需要重启 DSH Desktop 后人工确认（本次交付**尚未**完成这一步）：
+重启 DSH Desktop 后的人工确认：
 
-- [ ] 重启 DSH Desktop（当前进程加载的是旧插件树）
-- [ ] **新开一个会话**（工具/路由列表是会话创建时的快照）
-- [ ] 侧栏 **Artifacts** tab：列表、大小、相对时间正确；点击可在 iframe 预览
+- [x] 重启 DSH Desktop
+- [x] **新开一个会话**（工具/路由列表是会话创建时的快照）
+- [x] 侧栏 **Artifacts** tab 正常渲染（用户已确认「有效果了」）
 - [ ] 再放一个文件进 root，确认列表在轮询周期内自动出现
-- [ ] 卸载后路由消失、无残留、无报错
+- [ ] 卸载后路由消失、无残留、无报错（未验证；卸载命令见 README）
 
 > `node --check` 已从验收项中移除：它按 CommonJS 解析 `.js`，对 ESM 文件会误报
 > `Cannot use import statement outside a module`。取而代之的是 `load.test.mjs`
@@ -374,7 +375,7 @@ dsh plugin --profile desktop add github:<owner>/dsh-artifact-index
 |---|---|---|
 | **D1** | HTML 预览的 CSP 策略（§6.2） | **已定案 = A：`sandbox`**（脚本不跑）。`sandbox-scripts` / `none` 作为 config 逃生门存在，但默认值不放松。 |
 | **D2** | artifact 根目录默认值 | **已定案 = `$DSH_HOME/artifacts`**；可用 config `root` 或环境变量 `DSH_ARTIFACT_INDEX_ROOT` 覆盖（避免默认暴露整个工作区）。 |
-| **D3** | 项目落地位置 | **已定案（相对原建议变更）= `D:\opencode-workspace\Projects\DeepseekHarness\dsh-artifact-index`**，与 `third-party/`、`catalogs/` 同级，而非 `Projects\` 直属。 |
+| **D3** | 项目落地位置 | **已定案（相对原建议变更）= DSH 相关项目工作区下的 `DeepseekHarness\dsh-artifact-index`**，与 `third-party/`、`catalogs/` 同级，而非 `Projects\` 直属。 |
 
 ---
 
