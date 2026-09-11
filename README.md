@@ -44,6 +44,28 @@ dsh --profile desktop --dump-config | Select-String artifact-index
 
 **必须新开一个会话**才能看到效果——DSH 的插件/工具列表是会话创建时的快照。
 
+### 怎么确认它真的生效了
+
+最便宜的信号是启动日志里的一行（`%APPDATA%\DSH Desktop\logs\dsh-<日期>.log`）：
+
+```
+[dsh-artifact-index] artifact root = D:\DSHData\artifacts (maxItems=500, ...)
+```
+
+- **有这行** → `apply` 跑到了，剩下的是浏览器侧的事（看侧栏 Artifacts tab）。
+- **没这行** → 插件没激活，**别去查路由**：先查 `dsh.profile.bundles` 里有没有
+  `dsh-artifact-index`，再看日志里有没有 `failed to apply loader entry …`。
+
+用 curl 是**测不出来**的：DSH 的 web server 在到达任何插件路由之前，就把非浏览器
+请求 403 掉了（连确实存在的 `/sidebar/api` 和裸 `/` 也一样，补 `Origin` /
+`Sec-Fetch-Site` 都没用）。要命令行验证，用：
+
+```bash
+node scripts/smoke.mjs D:\DSHData\artifacts
+```
+
+它直接驱动 handler、绕过 web server 那道闸门，对**真实**目录逐项回取校验。
+
 > `dsh-artifacts` 与 `dsh-better-sidebar` 需要**先**安装好；本插件只补后端，不替代它们。
 
 ---

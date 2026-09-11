@@ -149,6 +149,41 @@ Do not treat any of these as provided:
 
 ## 4. Deployment guidance
 
+### Layering note: the host already has a gate
+
+Measured on DSH Desktop 2.0.9 / core 0.1.5-rc.1: a plain `curl` to any path on
+the host web server — including routes that provably exist, such as
+`/sidebar/api`, and the bare `/` — returns `403` with a `text/plain` `forbidden`
+body **before any plugin route runs**. Adding `Sec-Fetch-Site: same-origin`,
+`Origin`, or `Referer`, or switching to `Host: localhost`, does not change it,
+and the webserver's own config carries no auth/fence options.
+
+So `lib/trust.js` is a **second** layer, not the only one. It stays because it
+answers a different question than the host does: the host decides "is this the
+GUI's own traffic", while `trust.js` decides "is this request plausibly
+same-origin at all" (Host is loopback, not `cross-site`). Defence in depth — and
+the host's gate is not a documented contract this plugin can rely on across
+versions.
+
+Practical consequence: **the routes cannot be validated from the command line.**
+Use `scripts/smoke.mjs`, which drives the handler directly and bypasses the web
+server, or check the GUI.
+
+### Confirming the plugin actually activated
+
+The startup line is the cheapest proof that `apply` ran. Look for it in
+`%APPDATA%\DSH Desktop\logs\dsh-<date>.log`:
+
+```
+[dsh-artifact-index] artifact root = D:\DSHData\artifacts (maxItems=500, …)
+```
+
+- **Present** → `apply` ran; any remaining problem is client-side.
+- **Absent** → the plugin never activated. Do **not** go looking at the route.
+  Check `dsh.profile.bundles` for `dsh-artifact-index`, and grep the log for
+  `failed to apply loader entry …`. Remember that Cordis skips plugins with
+  unsatisfied `inject` silently.
+
 - Keep the artifact root narrow and purpose-built (`$DSH_HOME/artifacts`), never
   a home directory or a source tree.
 - Leave `csp` at `sandbox` unless a specific artifact needs scripts.
