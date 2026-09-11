@@ -38,4 +38,4 @@ First release. Provides the missing backend for the `dsh-artifacts` sidebar tab.
 - No authentication; the sole boundary is the DSH profile's loopback binding.
 - Symlinks are never followed, even to targets inside the root.
 
-[0.1.0]: https://github.com/example/dsh-artifact-index/releases/tag/v0.1.0
+[0.1.0]: https://github.com/Huuuuung/dsh-artifact-index/releases/tag/v0.1.0

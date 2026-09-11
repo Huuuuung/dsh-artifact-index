@@ -15,6 +15,14 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Huuuuung/dsh-artifact-index.git"
+  },
+  "homepage": "https://github.com/Huuuuung/dsh-artifact-index#readme",
+  "bugs": {
+    "url": "https://github.com/Huuuuung/dsh-artifact-index/issues"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=22"
