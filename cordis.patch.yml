@@ -1,0 +1,13 @@
+# dsh-artifact-index bundle patch.
+#
+# Inserts one host-plane row. The row mounts `lib/index.js`, which registers the
+# `/report` routes on the DSH web server (the same `ctx.webServer.register`
+# seam used by dsh-billing-dashboard and dsh-better-sidebar).
+#
+# Zero runtime dependencies and zero lifecycle scripts on purpose: this profile
+# has already been taken down twice by pnpm's build-script policy
+# (ERR_PNPM_IGNORED_BUILDS for node-pty and for a git-hosted plugin), so
+# anything that would need an `allowBuilds` entry is avoided by construction.
+- insert:
+    - id: dsh-artifact-index
+      name: 'dsh-artifact-index'

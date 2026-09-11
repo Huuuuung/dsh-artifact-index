@@ -1,0 +1,13 @@
+# Zero runtime dependencies, so the ignore list is short on purpose.
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+
+# Local install backups and scratch output.
+.install-backup/
+*.local.md
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
