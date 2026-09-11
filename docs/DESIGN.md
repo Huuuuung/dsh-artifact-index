@@ -205,7 +205,7 @@ GET <indexUrl>          # 默认 /report/?list=1
 
 ---
 
-## 6. 安全模型（本项目最需要评审的部分）
+## 6. 安全模型
 
 ### 6.1 威胁与对策
 
@@ -215,26 +215,26 @@ GET <indexUrl>          # 默认 /report/?list=1
 | 符号链接指向 root 之外 | `fs.realpath` 后**再**做一次前缀校验（对 root 本身也取 realpath） |
 | 暴露敏感文件（`.env`、密钥、`.git`） | 只服务**白名单扩展名**；且 root 默认是专用目录，不是整个 home |
 | 目录遍历枚举 | 索引只 `readdir` 一层（不递归），跳过目录、隐藏文件、符号链接 |
-| 超大响应 | `maxItems` 上限；单文件大小上限（默认 64 MiB），超限 413 |
-| **预览内容获得同源脚本能力**（见 6.2） | 默认对 HTML/SVG 加 `Content-Security-Policy: sandbox` |
-| 跨站调用索引 | 校验 `Sec-Fetch-Site` / `Origin`：只接受 same-origin / `none` |
+| 超大响应 | `maxItems` 上限（默认 500）；单文件上限 `maxFileBytes`（默认 25 MiB），超限 413 |
+| **预览内容获得同源脚本能力**（见 6.2） | 默认对 HTML/SVG/XML 加 `Content-Security-Policy: sandbox` |
+| 跨站调用索引 | 三层闸门：Host 必须是回环地址或在 `trustedHosts` 中（挡 DNS rebinding）；`Sec-Fetch-Site: cross-site` 直接拒绝；`Origin` 存在时其 hostname 必须与 Host 一致 |
 | 非回环访问 | 依托宿主 `networkExposure: loopback`；插件**不额外放开**绑定 |
 
-### 6.2 ⚠️ 关键决策：预览 HTML 的 CSP（**需你拍板**）
+### 6.2 预览 HTML 的 CSP
 
-`items[].url` 会被 `dsh-artifacts` 放进 **同源 iframe**。这意味着一个被 agent 生成的
-恶意 HTML 可以：读取 DSH 的 `localStorage`、以你的会话身份调用 DSH 的本地 API。
+`items[].url` 会被 `dsh-artifacts` 放进**同源 iframe**。这意味着一个被 agent 生成的
+恶意 HTML 可以：读取 DSH 的 `localStorage`、以当前 DSH 会话的身份调用本地 API。
 
-**三个可选策略：**
+三个可选策略，最终取 **A**：
 
 | 策略 | 响应头 | 效果 | 代价 |
 |---|---|---|---|
-| **A. `sandbox`（我推荐）** | `Content-Security-Policy: sandbox` | HTML/CSS 正常渲染；**脚本不执行**、无法访问父页面或 cookie | 生成物里的交互脚本（图表按钮、live-reload）失效 |
+| **A. `sandbox`（默认）** | `Content-Security-Policy: sandbox` | HTML/CSS 正常渲染；**脚本不执行**、无法访问父页面或 cookie | 生成物里的交互脚本（图表按钮、live-reload）失效 |
 | **B. `sandbox allow-scripts`** | `Content-Security-Policy: sandbox allow-scripts` | 脚本可跑，但仍是**不透明源**（拿不到 cookie / 父页面） | 图表库这类需要脚本的自包含 HTML 可用；仍无法触碰 DSH |
-| **C. 不加头** | — | 完全同源，交互最完整 | **风险最高**：等于让 agent 生成的任意 HTML 以你的身份运行 |
+| **C. 不加头** | — | 完全同源，交互最完整 | **风险最高**：等于让 agent 生成的任意 HTML 以当前会话身份运行 |
 
-**我的建议：默认 A，提供配置项 `csp: "sandbox" \| "sandbox-scripts" \| "none"`，
-并在 README 里写明各自代价。** 请你在评审时确认。
+默认 A，并暴露配置项 `csp: "sandbox" | "sandbox-scripts" | "none"`，各自的代价
+在 README 的配置表里写明。
 
 ### 6.3 明确不做的事
 
@@ -251,7 +251,7 @@ GET <indexUrl>          # 默认 /report/?list=1
 | DSH | `>= 0.1.5-rc.1` | 本机实测版本；`webServer.register` 的 `prefix` 形态由 better-sidebar 佐证 |
 | Node | `>= 22` | DSH Desktop 内置 24.x |
 | 运行时依赖 | **零** | 与 `dsh-artifacts` 保持同一标准 |
-| lifecycle 脚本 | **零**（无 `prepare`/`postinstall`） | 避免 pnpm `ERR_PNPM_IGNORED_BUILDS`（本项目已两次踩坑） |
+| lifecycle 脚本 | **零**（无 `prepare`/`postinstall`） | 避免触发 pnpm 的构建授权（`ERR_PNPM_IGNORED_BUILDS`） |
 | 冲突面 | 仅 `/report/` 前缀 | 已核查：本机无其他插件占用该前缀 |
 
 ---
@@ -337,35 +337,33 @@ dsh plugin --profile desktop add dsh-artifact-index
 卸载：`dsh plugin --profile desktop remove dsh-artifact-index`。
 
 > **不做的事**：不改用户的 `pnpm-workspace.yaml`；不要求 `allowBuilds`
-> （零 lifecycle → 不触发 pnpm 构建白名单，这是吸取前两次踩坑的教训）。
-> 已实测：安装输出无 `ERR_PNPM_IGNORED_BUILDS`，依赖数 16 → 17，**无任何包被移除**。
+> （零 lifecycle → 不触发 pnpm 构建白名单，因此安装不会卡在构建授权上）。
+> 已实测：安装输出无 `ERR_PNPM_IGNORED_BUILDS`，且不会移除既有依赖。
 
 ---
 
-## 11. 验收标准（Definition of Done）
+## 11. 验收标准
 
-自动化部分（已全绿）：
+自动化（`node --test` 与 `scripts/smoke.mjs`）：
 
-- [x] `node --test` —— **63/63 通过**
+- [x] `node --test` —— **64/64 通过**
 - [x] `GET /report/?list=1` 返回 §3.1 契约 JSON，`items` 最新在前
 - [x] 负向全过：越界 → 400/404、非白名单 → 404、超限 → 413、跨站/非 loopback Host → 403
 - [x] HTML 预览默认**不执行脚本**（响应带 `Content-Security-Policy: sandbox`）
-- [x] `scripts/smoke.mjs` 对**真实** artifact 目录（`$DSH_HOME/artifacts`）端到端 **22/22 通过**
-- [x] `dsh --profile desktop --dump-config` 出现 `# == dsh-artifact-index` 挂载行，
-      且除既有的 `wallpaper-engine` 警告外**无其他插件回归**
+- [x] `scripts/smoke.mjs` 对真实 artifact 目录端到端 **22/22 通过**
 - [x] `apply` 装配测试：注册恰好一条 `prefix` 路由、回调返回 disposer
 
-重启 DSH Desktop 后的人工确认：
+运行时（真实 DSH Desktop / core 0.1.5-rc.1）：
 
-- [x] 重启 DSH Desktop
-- [x] **新开一个会话**（工具/路由列表是会话创建时的快照）
-- [x] 侧栏 **Artifacts** tab 正常渲染（用户已确认「有效果了」）
-- [ ] 再放一个文件进 root，确认列表在轮询周期内自动出现
-- [ ] 卸载后路由消失、无残留、无报错（未验证；卸载命令见 README）
+- [x] `dsh --profile desktop --dump-config` 出现挂载行，且无其他插件回归
+- [x] 重启后侧栏 **Artifacts** tab 正常渲染（列表、大小、相对时间、iframe 预览）
 
-> `node --check` 已从验收项中移除：它按 CommonJS 解析 `.js`，对 ESM 文件会误报
-> `Cannot use import statement outside a module`。取而代之的是 `load.test.mjs`
-> 用 `import()` 真加载每个模块——同时校验语法与导入路径。
+未验证，记录在此以免被当作已验证：新增 artifact 后列表的自动刷新、卸载后的清理。
+两者都不影响安装与使用。
+
+> `node --check` 不适用于本项目：它按 CommonJS 解析 `.js`，对 ESM 文件会误报
+> `Cannot use import statement outside a module`。`load.test.mjs` 用 `import()`
+> 真加载每个模块，同时校验语法与导入路径。
 
 ---
 
@@ -387,6 +385,5 @@ dsh plugin --profile desktop add dsh-artifact-index
 | ~~`webServer.register` 的 `prefix` 语义在 0.1.5 有差异~~ | — | — | **已消解**：语义由 better-sidebar 佐证；`test/contract.test.mjs` 的真 HTTP 用例与 `scripts/smoke.mjs` 已覆盖 |
 | 用户误把 root 指向整个 home | 低 | 高 | 扩展名白名单 + 不递归 + 跳过隐藏文件；启动日志打印生效 root |
 | 预览 XSS 影响 DSH 会话 | 中 | **高** | 已定案 D1：HTML/SVG/XML 默认下发 `Content-Security-Policy: sandbox` |
-| 安装动作改动 profile 状态 | 中 | 中 | 安装前备份 `package.json` / `pnpm-workspace.yaml` / `cordis.patch.yml` |
 | 索引被缓存导致「新 artifact 不出现」 | 低 | 中 | 所有响应带 `Cache-Control: no-store` |
 | 符号链接把读取引到 root 之外 | 低 | 高 | 双端 `realpath` 校验；且扫描层不列符号链接 |
